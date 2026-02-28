@@ -28,3 +28,7 @@ calvin/
 
 # data directory
 data/
+/new_last/
+/instructions/
+/Miniforge3-Linux-x86_64.sh
+/wandb/

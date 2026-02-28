@@ -59,6 +59,7 @@ class RotaryPositionEncoding3D(RotaryPositionEncoding):
 
     def __init__(self, feature_dim, pe_type='Rotary3D'):
         super().__init__(feature_dim, pe_type)
+        assert feature_dim % 3 == 0
 
     @torch.no_grad()
     def forward(self, XYZ):

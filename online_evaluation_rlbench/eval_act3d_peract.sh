@@ -14,6 +14,7 @@ embedding_dim=120
 cameras="left_shoulder,right_shoulder,wrist,front"
 seed=0
 checkpoint=train_logs/act3d_peract.pth
+export PYTHONPATH="$PWD:$PYTHONPATH"
 
 num_ckpts=${#tasks[@]}
 for ((i=0; i<$num_ckpts; i++)); do

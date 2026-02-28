@@ -5,48 +5,48 @@ import torch.nn.functional as F
 from torchvision.ops import FeaturePyramidNetwork
 
 from .multihead_custom_attention import MultiheadCustomAttention
-from .multihead_flash_attention import MultiheadFlashAttention
+# from .multihead_flash_attention import MultiheadFlashAttention
 
 
-def convert_multihead_flash_attention(module, process_group=None):
-    r"""Helper function to convert all `MultiheadCustomAttention` layers in
-    the model to `MultiheadFlashAttention` layers.
-
-    Follow the implementation of torch.nn.SyncBatchNorm.convert_sync_batchnorm
-
-    Args:
-        module (nn.Module): module containing one or more
-            `MultiheadCustomAttention` layers
-        process_group (optional): process group to scope synchronization,
-            default is the whole world
-
-    Returns:
-        The original `module` with the converted `MultiheadFlashAttention`
-        layers. If the original `module` is a `MultiheadCustomAttention`
-        layer, a new `MultiheadFlashAttention` layer object will be returned
-        instead.
-    """
-    module_output = module
-    if isinstance(module, MultiheadCustomAttention):
-        module_output = MultiheadFlashAttention(
-            embed_dim=module.embed_dim,
-            num_heads=module.num_heads,
-            dropout=module.dropout,
-            bias=module.in_proj_bias is not None,
-            add_bias_kv=module.bias_k is not None,
-            add_zero_attn=module.add_zero_attn,
-            kdim=module.kdim,
-            vdim=module.vdim,
-            slot_competition=module.slot_competition,
-            return_kv=module.return_kv,
-            gate_attn=module.gate_attn is not None
-        )
-    for name, child in module.named_children():
-        module_output.add_module(
-            name, convert_multihead_flash_attention(child, process_group)
-        )
-    del module
-    return module_output
+# def convert_multihead_flash_attention(module, process_group=None):
+#     r"""Helper function to convert all `MultiheadCustomAttention` layers in
+#     the model to `MultiheadFlashAttention` layers.
+#
+#     Follow the implementation of torch.nn.SyncBatchNorm.convert_sync_batchnorm
+#
+#     Args:
+#         module (nn.Module): module containing one or more
+#             `MultiheadCustomAttention` layers
+#         process_group (optional): process group to scope synchronization,
+#             default is the whole world
+#
+#     Returns:
+#         The original `module` with the converted `MultiheadFlashAttention`
+#         layers. If the original `module` is a `MultiheadCustomAttention`
+#         layer, a new `MultiheadFlashAttention` layer object will be returned
+#         instead.
+#     """
+#     module_output = module
+#     if isinstance(module, MultiheadCustomAttention):
+#         module_output = MultiheadFlashAttention(
+#             embed_dim=module.embed_dim,
+#             num_heads=module.num_heads,
+#             dropout=module.dropout,
+#             bias=module.in_proj_bias is not None,
+#             add_bias_kv=module.bias_k is not None,
+#             add_zero_attn=module.add_zero_attn,
+#             kdim=module.kdim,
+#             vdim=module.vdim,
+#             slot_competition=module.slot_competition,
+#             return_kv=module.return_kv,
+#             gate_attn=module.gate_attn is not None
+#         )
+#     for name, child in module.named_children():
+#         module_output.add_module(
+#             name, convert_multihead_flash_attention(child, process_group)
+#         )
+#     del module
+#     return module_output
 
 
 def convert_diffusion_scheduler(model, diffusion_scheduler, **kwargs):
@@ -172,7 +172,8 @@ def convert_weights(model: nn.Module):
             if l.bias is not None:
                 l.bias.data = l.bias.data.half()
 
-        if isinstance(l, (nn.MultiheadAttention, MultiheadCustomAttention, MultiheadFlashAttention)):
+        # if isinstance(l, (nn.MultiheadAttention, MultiheadCustomAttention, MultiheadFlashAttention)):
+        if isinstance(l, (nn.MultiheadAttention, MultiheadCustomAttention)):
             for attr in [*[f"{s}_proj_weight" for s in ["in", "q", "k", "v"]], "in_proj_bias", "bias_k", "bias_v"]:
                 tensor = getattr(l, attr)
                 if tensor is not None:

@@ -1,5 +1,6 @@
 """Online evaluation script on RLBench."""
 import random
+import time
 from typing import Tuple, Optional
 from pathlib import Path
 import json
@@ -9,6 +10,7 @@ import torch
 import numpy as np
 import tap
 
+from diffuser_actor.equ_act_optimization.equ_act import EquAct
 from diffuser_actor.keypose_optimization.act3d import Act3D
 from diffuser_actor.trajectory_optimization.diffuser_actor import DiffuserActor
 from utils.common_utils import (
@@ -42,6 +44,13 @@ class Arguments(tap.Tap):
     single_task_gripper_loc_bounds: int = 0
     predict_trajectory: int = 1
 
+    # EquAct model parameters
+    n_total_pts: int = 2048
+    lmax: int = 3
+    film_type: str = 'iFiLM'
+    field_nn: str = 'equiformer'  # 'equiformer' 'roformer'
+    field_nn_c: int = 64
+
     # Act3D model parameters
     num_query_cross_attn_layers: int = 2
     num_ghost_point_cross_attn_layers: int = 2
@@ -69,6 +78,7 @@ class Arguments(tap.Tap):
     num_vis_ins_attn_layers: int = 2
     use_instruction: int = 1
     rotation_parametrization: str = '6D'
+    quaternion_format: str = 'xyzw'
 
 
 def load_models(args):
@@ -87,7 +97,27 @@ def load_models(args):
         task=task, buffer=args.gripper_loc_bounds_buffer,
     )
 
-    if args.test_model == "3d_diffuser_actor":
+    if args.test_model == "equact":
+        model = EquAct(
+            gripper_loc_bounds=gripper_loc_bounds,
+            num_ghost_points=args.num_ghost_points,
+            num_ghost_points_val=args.num_ghost_points_val,
+            weight_tying=bool(args.weight_tying),
+            gp_emb_tying=bool(args.gp_emb_tying),
+            num_sampling_level=args.num_sampling_level,
+            fine_sampling_ball_diameter=(
+                args.fine_sampling_ball_diameter),
+            regress_position_offset=bool(
+                args.regress_position_offset),
+            use_instruction=bool(args.use_instruction),
+            training=False,
+            n_total_pts=args.n_total_pts,
+            lmax=args.lmax,
+            film_type=args.film_type,
+            field_nn=args.field_nn,
+            field_nn_c=args.field_nn_c
+        ).to(device)
+    elif args.test_model == "3d_diffuser_actor":
         model = DiffuserActor(
             backbone=args.backbone,
             image_size=tuple(int(x) for x in args.image_size.split(",")),
@@ -97,6 +127,7 @@ def load_models(args):
             fps_subsampling_factor=args.fps_subsampling_factor,
             gripper_loc_bounds=gripper_loc_bounds,
             rotation_parametrization=args.rotation_parametrization,
+            quaternion_format=args.quaternion_format,
             diffusion_timesteps=args.diffusion_timesteps,
             nhist=args.num_history,
             relative=bool(args.relative_action),
@@ -130,7 +161,13 @@ def load_models(args):
         raise NotImplementedError
 
     # Load model weights
-    model_dict = torch.load(args.checkpoint, map_location="cpu")
+    for tries in range(200):  # 200 x 10 / 60 = 40h
+        try:
+            model_dict = torch.load(args.checkpoint, map_location="cpu")
+            break
+        except Exception as e:
+            print('Waiting 10min for model to be loaded: ', e)
+            time.sleep(600)
     model_dict_weight = {}
     for key in model_dict["weight"]:
         _key = key[7:]

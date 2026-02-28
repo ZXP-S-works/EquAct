@@ -1,0 +1,26 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="train_equ_act_physical" type="PythonConfigurationType" factoryName="Python" singleton="false">
+    <module name="3d_diffuser_actor" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="PARENT_ENVS" value="true" />
+    <envs>
+      <env name="PYTHONUNBUFFERED" value="1" />
+      <env name="CUDA_LAUNCH_BLOCKING" value="1" />
+      <env name="CUDA_VISIBLE_DEVICES" value="1" />
+    </envs>
+    <option name="SDK_HOME" value="" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="IS_MODULE_SDK" value="true" />
+    <option name="ADD_CONTENT_ROOTS" value="true" />
+    <option name="ADD_SOURCE_ROOTS" value="true" />
+    <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+    <option name="SCRIPT_NAME" value="torch.distributed.run" />
+    <option name="PARAMETERS" value="--nproc_per_node=1 --master_port=1238 main_equ_act.py --dataset=./data/realworld_train/ --valset=./data/realworld_train/ --instructions=instructions/physical/instructions.pkl --cameras left_shoulder right_shoulder front --num_workers=1 --train_iters=60000 --embedding_dim=120 --action_dim=8 --use_instruction=1 --weight_tying=1 --gp_emb_tying=1 --exp_log_dir=0420_train_equact --batch_size=2 --batch_size_val=2 --cache_size=600 --cache_size_val=0 --variations=200 --val_freq=1000 --num_ghost_points=450 --num_ghost_points_val=2000 --symmetric_rotation_loss=0 --regress_position_offset=0 --num_sampling_level=3 --workspace_bound=[[0.18,-0.39,-0.1],[0.96,0.39,0.53]] --gripper_loc_bounds=[[0.18,-0.39,-0.07],[0.96,0.39,0.53]] --table_height=-0.06 --lr=1e-4 --position_loss_coeff=1 --max_episodes_per_task=-1 --run_log_dir=equ_act_200" />
+    <option name="SHOW_COMMAND_LINE" value="false" />
+    <option name="EMULATE_TERMINAL" value="false" />
+    <option name="MODULE_MODE" value="true" />
+    <option name="REDIRECT_INPUT" value="false" />
+    <option name="INPUT_FILE" value="" />
+    <method v="2" />
+  </configuration>
+</component>

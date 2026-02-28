@@ -199,6 +199,17 @@ class Encoder(nn.Module):
                 mode='bilinear'
             )
 
+            # # ZXP visualize pcd_i[0]
+            # import matplotlib.pyplot as plt
+            # pcd_0 = pcd_i.reshape(40, 3, 3, 32, 32)[0].clone().detach().cpu().permute(0, 2, 3, 1).reshape(-1, 3)
+            # fig = plt.figure(figsize=(15, 15))
+            # ax = fig.add_subplot(projection='3d')
+            # ax.scatter(pcd_0[:, 0], pcd_0[:, 1], pcd_0[:, 2], marker='.')
+            # ax.set_xlabel('X Label')
+            # ax.set_ylabel('Y Label')
+            # ax.set_zlabel('Z Label')
+            # plt.show()
+
             # Merge different cameras for clouds, separate for rgb features
             h, w = pcd_i.shape[-2:]
             pcd_i = einops.rearrange(

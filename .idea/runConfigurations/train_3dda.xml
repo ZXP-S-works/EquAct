@@ -1,0 +1,26 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="train_3dda" type="PythonConfigurationType" factoryName="Python">
+    <module name="3d_diffuser_actor" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="PARENT_ENVS" value="true" />
+    <envs>
+      <env name="PYTHONUNBUFFERED" value="1" />
+      <env name="CUDA_LAUNCH_BLOCKING" value="1" />
+      <env name="CUDA_VISIBLE_DEVICES" value="0" />
+    </envs>
+    <option name="SDK_HOME" value="" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="IS_MODULE_SDK" value="true" />
+    <option name="ADD_CONTENT_ROOTS" value="true" />
+    <option name="ADD_SOURCE_ROOTS" value="true" />
+    <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+    <option name="SCRIPT_NAME" value="torch.distributed.run" />
+    <option name="PARAMETERS" value="--nproc_per_node=1 --master_port=2234 main_trajectory.py --dataset=/media/zxp/large/project_data/SE3_bi_equ_data/peract/Peract_packaged/train --valset=/media/zxp/large/project_data/SE3_bi_equ_data/peract/Peract_packaged/val --instructions=instructions/peract/instructions.pkl --gripper_loc_bounds=tasks/18_peract_tasks_location_bounds.json --num_workers=1 --train_iters=60000 --embedding_dim=120 --use_instruction=1 --rotation_parametrization=6D --diffusion_timesteps=100 --val_freq=5000 --dense_interpolation=1 --interpolation_length=2 --exp_log_dir=0616_train_3dda --batch_size=8 --batch_size_val=14 --cache_size=600 --cache_size_val=0 --keypose_only=1 --variations=200 --lr=1e-4 --num_history=3 --max_episodes_per_task=-1 --quaternion_format=xyzw --run_log_dir=diffusion_multitask_peg_ori_tmp" />
+    <option name="SHOW_COMMAND_LINE" value="false" />
+    <option name="EMULATE_TERMINAL" value="false" />
+    <option name="MODULE_MODE" value="true" />
+    <option name="REDIRECT_INPUT" value="false" />
+    <option name="INPUT_FILE" value="" />
+    <method v="2" />
+  </configuration>
+</component>

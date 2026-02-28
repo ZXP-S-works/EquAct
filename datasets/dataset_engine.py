@@ -95,6 +95,8 @@ class RLBenchDataset(Dataset):
         self._episodes = []
         self._num_episodes = 0
         for task, eps in episodes_by_task.items():
+            # print("episodes_by_task.items() are", episodes_by_task.items())
+            # exit(0)
             if len(eps) > max_episodes_per_task and max_episodes_per_task > -1:
                 eps = random.sample(eps, max_episodes_per_task)
             episodes_by_task[task] = sorted(
@@ -140,6 +142,7 @@ class RLBenchDataset(Dataset):
             [trajectories]  # wrt frame_ids, (N_i, 8)
         ]
         """
+        # print("episodes are", self._num_episodes)
         episode_id %= self._num_episodes
         task, variation, file = self._episodes[episode_id]
 

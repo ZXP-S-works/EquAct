@@ -24,7 +24,6 @@ from rlbench.demo import Demo
 from pyrep.errors import IKError, ConfigurationPathError
 from pyrep.const import RenderMode
 
-
 ALL_RLBENCH_TASKS = [
     'basketball_in_hoop', 'beat_the_buzz', 'change_channel', 'change_clock', 'close_box',
     'close_door', 'close_drawer', 'close_fridge', 'close_grill', 'close_jar', 'close_laptop_lid',
@@ -43,7 +42,10 @@ ALL_RLBENCH_TASKS = [
     'take_lid_off_saucepan', 'take_money_out_safe', 'take_plate_off_colored_dish_rack', 'take_shoes_out_of_box',
     'take_toilet_roll_off_stand', 'take_umbrella_out_of_umbrella_stand', 'take_usb_out_of_computer',
     'toilet_seat_down', 'toilet_seat_up', 'tower3', 'turn_oven_on', 'turn_tap', 'tv_on', 'unplug_charger',
-    'water_plants', 'wipe_desk'
+    'water_plants', 'wipe_desk', 'place_cups_se3', 'close_jar_se3', 'insert_onto_square_peg_se3', 'light_bulb_in_se3',
+    'meat_off_grill_se3', 'place_shape_in_shape_sorter_se3', 'place_wine_at_rack_location_se3',
+    'push_buttons_se3', 'put_groceries_in_cupboard_se3', 'put_item_in_drawer_se3', 'put_money_in_safe_se3',
+    'slide_block_to_color_target_se3', 'stack_blocks_se3', 'sweep_to_dustpan_of_size_se3', 'turn_tap_se3'
 ]
 TASK_TO_ID = {task: i for i, task in enumerate(ALL_RLBENCH_TASKS)}
 
@@ -88,7 +90,7 @@ class Mover:
         reward = 0
 
         for try_id in range(self._max_tries):
-            action_collision = np.ones(action.shape[0]+1)
+            action_collision = np.ones(action.shape[0] + 1)
             action_collision[:-1] = action
             if collision_checking:
                 action_collision[-1] = 0
@@ -110,11 +112,11 @@ class Mover:
         # we execute the gripper action after re-tries
         action = target
         if (
-            not reward == 1.0
-            and self._last_action is not None
-            and action[7] != self._last_action[7]
+                not reward == 1.0
+                and self._last_action is not None
+                and action[7] != self._last_action[7]
         ):
-            action_collision = np.ones(action.shape[0]+1)
+            action_collision = np.ones(action.shape[0] + 1)
             action_collision[:-1] = action
             if collision_checking:
                 action_collision[-1] = 0
@@ -132,12 +134,12 @@ class Mover:
 class Actioner:
 
     def __init__(
-        self,
-        policy=None,
-        instructions=None,
-        apply_cameras=("left_shoulder", "right_shoulder", "wrist"),
-        action_dim=7,
-        predict_trajectory=True
+            self,
+            policy=None,
+            instructions=None,
+            apply_cameras=("left_shoulder", "right_shoulder", "wrist"),
+            action_dim=7,
+            predict_trajectory=True
     ):
         self._policy = policy
         self._instructions = instructions
@@ -271,16 +273,16 @@ def obs_to_attn(obs, camera):
 class RLBenchEnv:
 
     def __init__(
-        self,
-        data_path,
-        image_size=(128, 128),
-        apply_rgb=False,
-        apply_depth=False,
-        apply_pc=False,
-        headless=False,
-        apply_cameras=("left_shoulder", "right_shoulder", "wrist", "front"),
-        fine_sampling_ball_diameter=None,
-        collision_checking=False
+            self,
+            data_path,
+            image_size=(128, 128),
+            apply_rgb=False,
+            apply_depth=False,
+            apply_pc=False,
+            headless=False,
+            apply_cameras=("left_shoulder", "right_shoulder", "wrist", "front"),
+            fine_sampling_ball_diameter=None,
+            collision_checking=False
     ):
 
         # setup required inputs
@@ -410,17 +412,17 @@ class RLBenchEnv:
         return demos
 
     def evaluate_task_on_multiple_variations(
-        self,
-        task_str: str,
-        max_steps: int,
-        num_variations: int,  # -1 means all variations
-        num_demos: int,
-        actioner: Actioner,
-        max_tries: int = 1,
-        verbose: bool = False,
-        dense_interpolation=False,
-        interpolation_length=100,
-        num_history=1,
+            self,
+            task_str: str,
+            max_steps: int,
+            num_variations: int,  # -1 means all variations
+            num_demos: int,
+            actioner: Actioner,
+            max_tries: int = 1,
+            verbose: bool = False,
+            dense_interpolation=False,
+            interpolation_length=100,
+            num_history=1,
     ):
         self.env.launch()
         task_type = task_file_to_task_class(task_str)
@@ -461,26 +463,26 @@ class RLBenchEnv:
         self.env.shutdown()
 
         var_success_rates["mean"] = (
-            sum(var_success_rates.values()) /
-            sum(var_num_valid_demos.values())
+                sum(var_success_rates.values()) /
+                sum(var_num_valid_demos.values())
         )
 
         return var_success_rates
 
     @torch.no_grad()
     def _evaluate_task_on_one_variation(
-        self,
-        task_str: str,
-        task: TaskEnvironment,
-        max_steps: int,
-        variation: int,
-        num_demos: int,
-        actioner: Actioner,
-        max_tries: int = 1,
-        verbose: bool = False,
-        dense_interpolation=False,
-        interpolation_length=50,
-        num_history=0,
+            self,
+            task_str: str,
+            task: TaskEnvironment,
+            max_steps: int,
+            variation: int,
+            num_demos: int,
+            actioner: Actioner,
+            max_tries: int = 1,
+            verbose: bool = False,
+            dense_interpolation=False,
+            interpolation_length=50,
+            num_history=0,
     ):
         device = actioner.device
 
@@ -604,8 +606,8 @@ class RLBenchEnv:
                 f"{reward:.2f}",
                 "max_reward",
                 f"{max_reward:.2f}",
-                f"SR: {success_rate}/{demo_id+1}",
-                f"SR: {total_reward:.2f}/{demo_id+1}",
+                f"SR: {success_rate}/{demo_id + 1}",
+                f"SR: {total_reward:.2f}/{demo_id + 1}",
                 "# valid demos", num_valid_demos,
             )
 
@@ -641,12 +643,12 @@ class RLBenchEnv:
         return collision_checking
 
     def verify_demos(
-        self,
-        task_str: str,
-        variation: int,
-        num_demos: int,
-        max_tries: int = 1,
-        verbose: bool = False,
+            self,
+            task_str: str,
+            variation: int,
+            num_demos: int,
+            max_tries: int = 1,
+            verbose: bool = False,
     ):
         if verbose:
             print()
@@ -714,7 +716,7 @@ class RLBenchEnv:
         return success_rate, valid, invalid_demos
 
     def create_obs_config(
-        self, image_size, apply_rgb, apply_depth, apply_pc, apply_cameras, **kwargs
+            self, image_size, apply_rgb, apply_depth, apply_pc, apply_cameras, **kwargs
     ):
         """
         Set up observation config for RLBench environment.
@@ -771,16 +773,16 @@ def _is_stopped(demo, i, obs, stopped_buffer, delta):
     #     and demo[i - 2].gripper_open == demo[i - 1].gripper_open
     # )
     gripper_state_no_change = i < (len(demo) - 2) and (
-        obs.gripper_open == demo[i + 1].gripper_open
-        and obs.gripper_open == demo[max(0, i - 1)].gripper_open
-        and demo[max(0, i - 2)].gripper_open == demo[max(0, i - 1)].gripper_open
+            obs.gripper_open == demo[i + 1].gripper_open
+            and obs.gripper_open == demo[max(0, i - 1)].gripper_open
+            and demo[max(0, i - 2)].gripper_open == demo[max(0, i - 1)].gripper_open
     )
     small_delta = np.allclose(obs.joint_velocities, 0, atol=delta)
     stopped = (
-        stopped_buffer <= 0
-        and small_delta
-        and (not next_is_not_final)
-        and gripper_state_no_change
+            stopped_buffer <= 0
+            and small_delta
+            and (not next_is_not_final)
+            and gripper_state_no_change
     )
     return stopped
 
@@ -800,8 +802,8 @@ def keypoint_discovery(demo: Demo, stopping_delta=0.1) -> List[int]:
         prev_gripper_open = obs.gripper_open
 
     if (
-        len(episode_keypoints) > 1
-        and (episode_keypoints[-1] - 1) == episode_keypoints[-2]
+            len(episode_keypoints) > 1
+            and (episode_keypoints[-1] - 1) == episode_keypoints[-2]
     ):
         episode_keypoints.pop(-2)
 

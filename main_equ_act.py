@@ -12,27 +12,56 @@ import torch.distributed as dist
 from torch.nn import functional as F
 
 from datasets.dataset_engine import RLBenchDataset
+from diffuser_actor.equ_act_optimization.equ_act import EquAct
+from diffuser_actor.equ_act_optimization.spherical_conv_utils import rotation_error
 from engine import BaseTrainTester
 from diffuser_actor import Act3D
+from utils import pytorch3d_transforms
 from utils.common_utils import (
     load_instructions, count_parameters, get_gripper_loc_bounds
 )
 
 
 class Arguments(tap.Tap):
-    cameras: Tuple[str, ...] = ("wrist", "left_shoulder", "right_shoulder")
+    cameras: Tuple[str, ...] = ("left_shoulder", "right_shoulder", "wrist", "front")
     image_size: str = "256,256"
     max_episodes_per_task: int = 100
     instructions: Optional[Path] = "instructions.pkl"
     seed: int = 0
-    tasks: Tuple[str, ...]
-    variations: Tuple[int, ...] = (0,)
+    # for all 18 rlbench tasks
+    tasks: Tuple[str, ...] = ('place_cups', 'close_jar', 'insert_onto_square_peg', 'light_bulb_in', 'meat_off_grill',
+                              'open_drawer', 'place_shape_in_shape_sorter', 'place_wine_at_rack_location',
+                              'push_buttons', 'put_groceries_in_cupboard', 'put_item_in_drawer', 'put_money_in_safe',
+                              'reach_and_drag', 'slide_block_to_color_target', 'stack_blocks', 'stack_cups',
+                              'sweep_to_dustpan_of_size', 'turn_tap')
+    # for all 18 SE3 rlbench tasks
+    # tasks: Tuple[str, ...] = ('place_cups_se3', 'close_jar_se3', 'insert_onto_square_peg_se3', 'light_bulb_in_se3', 'meat_off_grill_se3',
+    #                           'open_drawer', 'place_shape_in_shape_sorter_se3', 'place_wine_at_rack_location_se3',
+    #                           'push_buttons_se3', 'put_groceries_in_cupboard_se3', 'put_item_in_drawer_se3', 'put_money_in_safe_se3',
+    #                           'reach_and_drag', 'slide_block_to_color_target_se3', 'stack_blocks_se3', 'stack_cups',
+    #                           'sweep_to_dustpan_of_size_se3', 'turn_tap_se3')
+    # for developing
+    # tasks: Tuple[str, ...] = ('light_bulb_in', 'place_cups', 'sweep_to_dustpan_of_size')
+    # for ablation
+    # tasks: Tuple[str, ...] = ('place_wine_at_rack_location', 'insert_onto_square_peg', 'reach_and_drag', 'place_cups')
+    # for physical
+    # tasks: Tuple[str, ...] = ('flower', 'pick_place', 'disassemble_pipe', 'toilet_paper')
+    variations: int = 200
     checkpoint: Optional[Path] = None
     accumulate_grad_batches: int = 1
-    val_freq: int = 500
+    val_freq: int = 1000
     gripper_loc_bounds: Optional[str] = None
     gripper_loc_bounds_buffer: float = 0.04
+    workspace_bound: str = '[[-0.3, -0.5, 0.6], [0.7, 0.5, 1.6]]'
+    table_height: float = 0.751
     eval_only: int = 0
+    n_total_pts: int = 2048
+    lmax: int = 3
+    film_type: str = 'iFiLM'
+    field_nn: str = 'equiformer'  # 'equiformer' 'roformer'
+    field_nn_c: int = 64
+    rot_aug_range: list = [5, 5, 45]
+    # rot_aug_range: list = [0, 0, 0]
 
     # Training and validation datasets
     dataset: Path
@@ -44,21 +73,23 @@ class Arguments(tap.Tap):
     run_log_dir: str = "run"
 
     # Main training parameters
-    num_workers: int = 1
+    num_workers: int = 0
     batch_size: int = 16
     batch_size_val: int = 4
     cache_size: int = 100
     cache_size_val: int = 100
     lr: float = 1e-4
     train_iters: int = 200_000
-    max_episode_length: int = 5  # -1 for no limit
+    # max_episode_length: int = 5  # -1 for no limit
+    max_episode_length: int = 1  # -1 for no limit
 
     # Data augmentations
-    image_rescale: str = "0.75,1.25"  # (min, max), "1.0,1.0" for no rescaling
+    image_rescale: str = "1.0,1.0"  # (min, max), "1.0,1.0" for no rescaling
 
     # Loss
     position_loss: str = "ce"  # one of "ce" (our model), "mse" (HiveFormer)
-    ground_truth_gaussian_spread: float = 0.01
+    trans_temperature: float = 0.01  # used for converting expert trans to Boltzmann distribution (meter)
+    rot_temperature: float = 2.5  # used for converting expert rot to Boltzmann distribution (degree)
     compute_loss_at_all_layers: int = 0
     position_loss_coeff: float = 1.0
     position_offset_loss_coeff: float = 10000.0
@@ -70,15 +101,15 @@ class Arguments(tap.Tap):
 
     # Ghost points
     num_sampling_level: int = 3
-    fine_sampling_ball_diameter: float = 0.16
+    fine_sampling_ball_diameter: float = 0.25
     weight_tying: int = 1
     gp_emb_tying: int = 1
     num_ghost_points: int = 1000
-    num_ghost_points_val: int = 10000
+    num_ghost_points_val: int = 2000
     use_ground_truth_position_for_sampling_train: int = 1  # considerably speeds up training
 
     # Model
-    action_dim: int = 8
+    action_dim: int = 8  # xyz Cartesian coordinate + xyzw Quaternion + 1 gripper open
     backbone: str = "clip"  # one of "resnet", "clip"
     embedding_dim: int = 120
     num_ghost_point_cross_attn_layers: int = 2
@@ -101,7 +132,7 @@ class TrainTester(BaseTrainTester):
         instruction = load_instructions(
             self.args.instructions,
             tasks=self.args.tasks,
-            variations=self.args.variations
+            variations=tuple(i for i in range(self.args.variations))
         )
         if instruction is None:
             raise NotImplementedError()
@@ -152,15 +183,9 @@ class TrainTester(BaseTrainTester):
         """Initialize the model."""
         # Initialize model with arguments
         args = self.args
-        _model = Act3D(
-            backbone=args.backbone,
-            image_size=tuple(int(x) for x in args.image_size.split(",")),
-            embedding_dim=args.embedding_dim,
-            num_ghost_point_cross_attn_layers=args.num_ghost_point_cross_attn_layers,
-            num_query_cross_attn_layers=args.num_query_cross_attn_layers,
-            num_vis_ins_attn_layers=args.num_vis_ins_attn_layers,
-            rotation_parametrization=args.rotation_parametrization,
+        _model = EquAct(
             gripper_loc_bounds=self.args.gripper_loc_bounds,
+            workspace_bound=self.args.workspace_bound,
             num_ghost_points=args.num_ghost_points,
             num_ghost_points_val=args.num_ghost_points_val,
             weight_tying=bool(args.weight_tying),
@@ -168,7 +193,16 @@ class TrainTester(BaseTrainTester):
             num_sampling_level=args.num_sampling_level,
             fine_sampling_ball_diameter=args.fine_sampling_ball_diameter,
             regress_position_offset=bool(args.regress_position_offset),
-            use_instruction=bool(args.use_instruction)
+            use_instruction=bool(args.use_instruction),
+            trans_temperature=args.trans_temperature,
+            rot_temperature=args.rot_temperature,
+            table_height=self.args.table_height,
+            n_total_pts=self.args.n_total_pts,
+            lmax=self.args.lmax,
+            film_type=self.args.film_type,
+            field_nn=self.args.field_nn,
+            field_nn_c=self.args.field_nn_c,
+            rot_aug_range=self.args.rot_aug_range
         )
         print("Model parameters:", count_parameters(_model))
 
@@ -180,7 +214,7 @@ class TrainTester(BaseTrainTester):
             rotation_parametrization=args.rotation_parametrization,
             position_loss=args.position_loss,
             compute_loss_at_all_layers=bool(args.compute_loss_at_all_layers),
-            ground_truth_gaussian_spread=args.ground_truth_gaussian_spread,
+            ground_truth_gaussian_spread=args.trans_temperature,
             label_smoothing=args.label_smoothing,
             position_loss_coeff=args.position_loss_coeff,
             position_offset_loss_coeff=args.position_offset_loss_coeff,
@@ -195,7 +229,7 @@ class TrainTester(BaseTrainTester):
             optimizer.zero_grad()
 
         # Forward pass
-        out = model(
+        info = model(
             sample["rgbs"],
             sample["pcds"],
             sample["instr"],
@@ -205,7 +239,7 @@ class TrainTester(BaseTrainTester):
         )
 
         # Backward pass
-        loss = criterion.compute_loss(out, sample)
+        loss = info['loss']
         loss = sum(list(loss.values()))
         loss.backward()
 
@@ -216,7 +250,7 @@ class TrainTester(BaseTrainTester):
         # Log
         if dist.get_rank() == 0 and (step_id + 1) % self.args.val_freq == 0:
             self.writer.add_scalar("lr", self.args.lr, step_id)
-            self.writer.add_scalar("train-loss/noise_mse", loss, step_id)
+            self.writer.add_scalar("train-loss/total_loss", loss, step_id)
 
     @torch.no_grad()
     def evaluate_nsteps(self, model, criterion, loader, step_id, val_iters,
@@ -230,7 +264,7 @@ class TrainTester(BaseTrainTester):
             if i == val_iters:
                 break
 
-            action = model(
+            info = model(
                 sample["rgbs"],
                 sample["pcds"],
                 sample["instr"],
@@ -239,7 +273,7 @@ class TrainTester(BaseTrainTester):
                 gt_action=None
             )
             losses = criterion.compute_metrics(
-                action,
+                info,
                 sample
             )
 
@@ -344,7 +378,7 @@ class LossAndMetrics:
 
         self._compute_rotation_loss(pred, gt_action[:, 3:7], losses)
 
-        losses["gripper"] = F.binary_cross_entropy_with_logits(pred["gripper"], gt_action[:, 7:8])
+        losses["gripper"] = F.binary_cross_entropy(pred["gripper"], gt_action[:, 7:8])
         losses["gripper"] *= self.gripper_loss_coeff
 
         return losses
@@ -424,9 +458,9 @@ class LossAndMetrics:
         final_pos_l2 = ((pred["position"] - outputs[:, :3]) ** 2).sum(1).sqrt()
         metrics["mean/pos_l2_final"] = final_pos_l2.to(dtype).mean()
         metrics["mean/pos_l2_final<0.01"] = (final_pos_l2 < 0.01).to(dtype).mean()
-
+        bs = outputs.shape[0]
         for i in range(len(pred["position_pyramid"])):
-            pos_l2_i = ((pred["position_pyramid"][i].squeeze(1) - outputs[:, :3]) ** 2).sum(1).sqrt()
+            pos_l2_i = ((pred["position_pyramid"][i].reshape(bs, -1, 3)[:, 0, :] - outputs[:, :3]) ** 2).sum(1).sqrt()
             metrics[f"mean/pos_l2_level{i}"] = pos_l2_i.to(dtype).mean()
 
         for task in np.unique(tasks):
@@ -443,24 +477,24 @@ class LossAndMetrics:
         # Rotation accuracy
         gt_quat = outputs[:, 3:7]
         if "quat" in self.rotation_parametrization:
-            if self.symmetric_rotation_loss:
-                gt_quat_ = -gt_quat.clone()
-                l1 = (pred["rotation"] - gt_quat).abs().sum(1)
-                l1_ = (pred["rotation"] - gt_quat_).abs().sum(1)
-                select_mask = (l1 < l1_).float()
-                l1 = (select_mask * l1 + (1 - select_mask) * l1_)
-            else:
-                l1 = ((pred["rotation"] - gt_quat).abs().sum(1))
+            gt_rot_wxyz = gt_quat[:, (3, 0, 1, 2)]
+            gt_rot = pytorch3d_transforms.quaternion_to_matrix(gt_rot_wxyz)
+            pred_rot_wxyz = pred["rotation"][:, (3, 0, 1, 2)]
+            pred_rot = pytorch3d_transforms.quaternion_to_matrix(pred_rot_wxyz)
+            l1 = []
+            for i in range(gt_rot.shape[0]):
+                l1.append(rotation_error(gt_rot[i:i+1], pred_rot[i:i+1]) / torch.pi * 180)
+            l1 = torch.cat(l1)
 
         metrics["mean/rot_l1"] = l1.to(dtype).mean()
-        metrics["mean/rot_l1<0.05"] = (l1 < 0.05).to(dtype).mean()
-        metrics["mean/rot_l1<0.025"] = (l1 < 0.025).to(dtype).mean()
+        metrics["mean/rot_l1<5"] = (l1 < 5).to(dtype).mean()
+        metrics["mean/rot_l1<2.5"] = (l1 < 2.5).to(dtype).mean()
 
         for task in np.unique(tasks):
             task_l1 = l1[tasks == task]
             metrics[f"{task}/rot_l1"] = task_l1.to(dtype).mean()
-            metrics[f"{task}/rot_l1<0.05"] = (task_l1 < 0.05).to(dtype).mean()
-            metrics[f"{task}/rot_l1<0.025"] = (task_l1 < 0.025).to(dtype).mean()
+            metrics[f"{task}/rot_l1<5"] = (task_l1 < 5).to(dtype).mean()
+            metrics[f"{task}/rot_l1<2.5"] = (task_l1 < 2.5).to(dtype).mean()
 
         return metrics
 
@@ -475,11 +509,15 @@ if __name__ == '__main__':
     if args.gripper_loc_bounds is None:
         args.gripper_loc_bounds = np.array([[-2, -2, -2], [2, 2, 2]]) * 1.0
     else:
-        args.gripper_loc_bounds = get_gripper_loc_bounds(
-            args.gripper_loc_bounds,
-            task=args.tasks[0] if len(args.tasks) == 1 else None,
-            buffer=args.gripper_loc_bounds_buffer
-        )
+        try:
+            args.gripper_loc_bounds = get_gripper_loc_bounds(
+                args.gripper_loc_bounds,
+                task=args.tasks[0] if len(args.tasks) == 1 else None,
+                buffer=args.gripper_loc_bounds_buffer
+            )
+        except Exception:
+            args.gripper_loc_bounds = np.array(eval(args.gripper_loc_bounds))
+    args.workspace_bound = eval(args.workspace_bound)
     log_dir = args.base_log_dir / args.exp_log_dir / args.run_log_dir
     args.log_dir = log_dir
     log_dir.mkdir(exist_ok=True, parents=True)

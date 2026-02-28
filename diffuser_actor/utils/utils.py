@@ -32,10 +32,14 @@ def sample_ghost_points_uniform_cube(bounds, num_points=1000):
 def sample_ghost_points_uniform_sphere(center, radius, bounds, num_points=1000):
     """Sample points uniformly within a sphere through rejection sampling."""
     ghost_points = np.empty((0, 3))
+    tries = 0
     while ghost_points.shape[0] < num_points:
         points = sample_ghost_points_uniform_cube(bounds, num_points)
         l2 = np.linalg.norm(points - center, axis=1)
         ghost_points = np.concatenate([ghost_points, points[l2 < radius]])
+        tries += 1
+        if tries > 100:
+            raise Exception('cannot find valid action sample')
     ghost_points = ghost_points[:num_points]
     return ghost_points
 

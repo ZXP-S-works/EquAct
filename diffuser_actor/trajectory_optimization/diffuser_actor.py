@@ -22,6 +22,81 @@ from diffuser_actor.utils.utils import (
     matrix_to_quaternion,
     quaternion_to_matrix
 )
+# from diffuser_actor.trajectory_optimization.dist import *
+# from diffuser_actor.trajectory_optimization import transforms
+
+
+# class DiffuseTwists:
+#     """
+#     Diffusion in the twists space, i.e., Li derivatives.
+#     Twists = [skew, translation] = [angular_velocity, linear_velocity]
+#     """
+#     def __init__(self,
+#                  num_train_timesteps=None,
+#                  beta_schedule=None,
+#                  prediction_type=None):
+#         self.K = num_train_timesteps
+#         self.k = None
+#         self.ang_mult = 1
+#         self.lin_mult = 1
+#         self.temperature_base = 1  # ZXP! differs from Diff-EDF
+#         self.time_exponent_alpha = 0.5
+#         self.time_exponent_temp = 1
+#         self.inference = '+'  # in +, x, xx
+#
+#     def set_timesteps(self, n_steps):
+#         self.k = n_steps
+#
+#     def add_noise(self, condition_data, noise, noise_t):
+#         eps = self.k / 2 * (float(self.ang_mult) ** 2)   # Shape: (1,)
+#         std = torch.sqrt(self.k) * float(self.lin_mult)   # Shape: (1,)
+#         T, delta_T, (gt_ang_score, gt_lin_score), (gt_ang_score_ref, gt_lin_score_ref) = \
+#             diffuse_isotropic_se3_batched(T0 = condition_data, eps=eps, std=std, x_ref=None, double_precision=True)
+#         return T, gt_ang_score, gt_lin_score
+#
+#     def step(self, denoise, k, T):
+#         self.k = k
+#         temperature = self.temperature_base * torch.pow(k, self.time_exponent_temp)
+#         alpha_ang = (self.ang_mult ** 2) * torch.pow(k, self.time_exponent_alpha) * self.K
+#         alpha_lin = (self.lin_mult ** 2) * torch.pow(k, self.time_exponent_alpha) * self.K
+#
+#         with torch.no_grad():
+#             (ang_score_dimless, lin_score_dimless) = denoise
+#         ang_score = ang_score_dimless.type(torch.float64) / (self.ang_mult * torch.sqrt(k))
+#         lin_score = lin_score_dimless.type(torch.float64) / (self.lin_mult * torch.sqrt(k))
+#
+#         ang_noise = torch.sqrt(temperature * alpha_ang) * torch.randn_like(ang_score, dtype=torch.float64)
+#         lin_noise = torch.sqrt(temperature * alpha_lin) * torch.randn_like(lin_score, dtype=torch.float64)
+#         ang_disp = (alpha_ang / 2) * ang_score + ang_noise
+#         lin_disp = (alpha_lin / 2) * lin_score + lin_noise
+#
+#         if self.inference == '+':
+#             # T + RdT
+#             L = T.detach()[...,self.q_indices] * (self.q_factor.type(torch.float64))
+#             q, x = T[...,:4], T[...,4:]
+#             dq = torch.einsum('...ij,...j->...i', L, ang_disp)
+#             dx = transforms.quaternion_apply(q, lin_disp)
+#             q = transforms.normalize_quaternion(q + dq)
+#             T = torch.cat([q, x+dx], dim=-1)
+#         elif self.inference == 'x':
+#             # TdT
+#             dT = transforms.se3_exp_map(torch.cat([lin_disp, ang_disp], dim=-1))
+#             dT = torch.cat([transforms.matrix_to_quaternion(dT[..., :3, :3]), dT[..., :3, 3]], dim=-1)
+#             T = transforms.multiply_se3(T, dT)
+#         elif self.inference == 'xx':
+#             # T*dT_clean*dT_noise
+#             ang_clean = (alpha_ang / 2) * ang_score
+#             lin_clean = (alpha_lin / 2) * lin_score
+#             dT_clean = transforms.se3_exp_map(torch.cat([lin_clean, ang_clean], dim=-1))
+#             dT_noise = transforms.se3_exp_map(torch.cat([lin_noise, ang_noise], dim=-1))
+#             dT_clean = torch.cat([transforms.matrix_to_quaternion(dT_clean[..., :3, :3]), dT_clean[..., :3, 3]], dim=-1)
+#             dT_noise = torch.cat([transforms.matrix_to_quaternion(dT_noise[..., :3, :3]), dT_noise[..., :3, 3]], dim=-1)
+#             T = transforms.multiply_se3(T, dT_clean)
+#             T = transforms.multiply_se3(T, dT_noise)
+#         else:
+#             raise NotImplementedError(self.inference)
+#
+#         self.prev_sample = T
 
 
 class DiffuserActor(nn.Module):
@@ -35,12 +110,14 @@ class DiffuserActor(nn.Module):
                  fps_subsampling_factor=5,
                  gripper_loc_bounds=None,
                  rotation_parametrization='6D',
+                 quaternion_format='xyzw',
                  diffusion_timesteps=100,
                  nhist=3,
                  relative=False,
                  lang_enhanced=False):
         super().__init__()
         self._rotation_parametrization = rotation_parametrization
+        self._quaternion_format = quaternion_format
         self._relative = relative
         self.use_instruction = use_instruction
         self.encoder = Encoder(
@@ -147,6 +224,7 @@ class DiffuserActor(nn.Module):
             device=condition_data.device
         )
         # Noisy condition data
+        # ZXP?
         noise_t = torch.ones(
             (len(condition_data),), device=condition_data.device
         ).long().mul(self.position_noise_scheduler.timesteps[0])
@@ -227,6 +305,9 @@ class DiffuserActor(nn.Module):
         trajectory = self.unconvert_rot(trajectory)
         # unnormalize position
         trajectory[:, :, :3] = self.unnormalize_pos(trajectory[:, :, :3])
+        # Convert gripper status to probaility
+        if trajectory.shape[-1] > 7:
+            trajectory[..., 7] = trajectory[..., 7].sigmoid()
 
         return trajectory
 
@@ -243,6 +324,9 @@ class DiffuserActor(nn.Module):
     def convert_rot(self, signal):
         signal[..., 3:7] = normalise_quat(signal[..., 3:7])
         if self._rotation_parametrization == '6D':
+            # The following code expects wxyz quaternion format!
+            if self._quaternion_format == 'xyzw':
+                signal[..., 3:7] = signal[..., (6, 3, 4, 5)]
             rot = quaternion_to_matrix(signal[..., 3:7])
             res = signal[..., 7:] if signal.size(-1) > 7 else None
             if len(rot.shape) == 4:
@@ -273,6 +357,9 @@ class DiffuserActor(nn.Module):
             signal = torch.cat([signal[..., :3], quat], dim=-1)
             if res is not None:
                 signal = torch.cat((signal, res), -1)
+            # The above code handled wxyz quaternion format!
+            if self._quaternion_format == 'xyzw':
+                signal[..., 3:7] = signal[..., (4, 5, 6, 3)]
         return signal
 
     def convert2rel(self, pcd, curr_gripper):
@@ -296,13 +383,18 @@ class DiffuserActor(nn.Module):
     ):
         """
         Arguments:
-            gt_trajectory: (B, trajectory_length, 3+6+X)
+            gt_trajectory: (B, trajectory_length, 3+4+X)
             trajectory_mask: (B, trajectory_length)
             timestep: (B, 1)
             rgb_obs: (B, num_cameras, 3, H, W) in [0, 1]
             pcd_obs: (B, num_cameras, 3, H, W) in world coordinates
             instruction: (B, max_instruction_length, 512)
-            curr_gripper: (B, nhist, output_dim)
+            curr_gripper: (B, nhist, 3+4+X)
+
+        Note:
+            Regardless of rotation parametrization, the input rotation
+            is ALWAYS expressed as a quaternion form.
+            The model converts it to 6D internally if needed.
         """
         if self._relative:
             pcd_obs, curr_gripper = self.convert2rel(pcd_obs, curr_gripper)

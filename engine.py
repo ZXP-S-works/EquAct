@@ -152,6 +152,12 @@ class BaseTrainTester:
                 iter_loader = iter(train_loader)
                 sample = next(iter_loader)
 
+            # import matplotlib.pyplot as plt
+            # for i in range(10):
+            #     plt.figure()
+            #     plt.imshow(sample['rgbs'][i][1].cpu().detach().permute(1, 2, 0))
+            # plt.show()
+
             self.train_one_step(model, criterion, optimizer, step_id, sample)
             if (step_id + 1) % self.args.val_freq == 0:
                 print("Train evaluation.......")
@@ -222,12 +228,18 @@ class BaseTrainTester:
                 "iter": step_id + 1,
                 "best_loss": best_loss
             }, self.args.log_dir / "best.pth")
+        # torch.save({
+        #     "weight": model.state_dict(),
+        #     "optimizer": optimizer.state_dict(),
+        #     "iter": step_id + 1,
+        #     "best_loss": best_loss
+        # }, self.args.log_dir / "last.pth")
         torch.save({
             "weight": model.state_dict(),
             "optimizer": optimizer.state_dict(),
             "iter": step_id + 1,
             "best_loss": best_loss
-        }, self.args.log_dir / "last.pth")
+        }, self.args.log_dir / (str(step_id+1)+".pth"))
         return best_loss
 
     def synchronize_between_processes(self, a_dict):

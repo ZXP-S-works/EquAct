@@ -1,10 +1,8 @@
-exp=3d_diffuser_actor
-
 tasks=(
-    close_jar insert_onto_square_peg light_bulb_in meat_off_grill open_drawer place_shape_in_shape_sorter place_wine_at_rack_location push_buttons put_groceries_in_cupboard put_item_in_drawer put_money_in_safe reach_and_drag slide_block_to_color_target stack_blocks stack_cups sweep_to_dustpan_of_size turn_tap place_cups
+   close_jar insert_onto_square_peg light_bulb_in meat_off_grill open_drawer place_shape_in_shape_sorter place_wine_at_rack_location push_buttons put_groceries_in_cupboard put_item_in_drawer put_money_in_safe reach_and_drag slide_block_to_color_target stack_blocks stack_cups sweep_to_dustpan_of_size turn_tap place_cups
 )
 data_dir=./data/peract/raw/test/
-num_episodes=100
+num_episodes=25
 gripper_loc_bounds_file=tasks/18_peract_tasks_location_bounds.json
 use_instruction=1
 max_tries=2
@@ -17,9 +15,18 @@ fps_subsampling_factor=5
 lang_enhanced=0
 relative_action=0
 seed=0
-checkpoint=train_logs/diffuser_actor_peract.pth
-
+#checkpoint=/home/zxp/projects/3d_diffuser_actor/train_logs/Actor_18Peract_100Demo_multitask/diffusion_multitask-peg-original/last.pth
+quaternion_format=xyzw  # for local training
+# quaternion_format=wxyz  # for pretrianed weight
+export PYTHONPATH="$PWD:$PYTHONPATH"
 num_ckpts=${#tasks[@]}
+exp=3dda_baseline_standard_10demo
+folder=0430_eval_3dda
+#for ckp in 5000 10000 15000 20000 25000 30000 35000 40000 45000 50000 55000 60000; do
+for ckp in 2000 68000 134000 200000 266000; do
+#checkpoint=train_logs/$exp/diffusion_multitask_peg_ori_60k/${ckp}.pth
+checkpoint=3dda_ckpt/standard_10demo/${ckp}.pth
+# checkpoint=train_logs/diffuser_actor_peract.pth
 for ((i=0; i<$num_ckpts; i++)); do
     CUDA_LAUNCH_BLOCKING=1 python online_evaluation_rlbench/evaluate_policy.py \
     --tasks ${tasks[$i]} \
@@ -40,16 +47,17 @@ for ((i=0; i<$num_ckpts; i++)); do
     --single_task_gripper_loc_bounds $single_task_gripper_loc_bounds \
     --data_dir $data_dir \
     --num_episodes $num_episodes \
-    --output_file eval_logs/$exp/seed$seed/${tasks[$i]}.json  \
+    --output_file eval_logs/${exp}/${ckp}/${tasks[$i]}.json \
     --use_instruction $use_instruction \
     --instructions instructions/peract/instructions.pkl \
-    --variations {0..60} \
+    --variations {0..199} \
     --max_tries $max_tries \
     --max_steps 25 \
     --seed $seed \
     --gripper_loc_bounds_file $gripper_loc_bounds_file \
     --gripper_loc_bounds_buffer 0.04 \
+    --quaternion_format $quaternion_format \
     --interpolation_length $interpolation_length \
     --dense_interpolation 1
 done
-
+done

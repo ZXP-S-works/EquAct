@@ -1,4 +1,4 @@
-name: 3d_diffuser_actor
+name: equ_act
 channels:
   - pytorch
   - nvidia
@@ -7,11 +7,15 @@ channels:
 dependencies:
   - python=3.8
   - pip
-  - pytorch=1.13.1
-  - torchvision=0.14.1
-  - torchaudio=0.13.1
-  - pytorch-cuda=11.6
+  - pytorch
+  - torchvision
+  - torchaudio
   - pip:
+    - torch-cluster
+    - torch-geometric
+    - torch-scatter
+    - e3nn
+    - healpy
     - git+https://github.com/openai/CLIP.git
     - numpy==1.23.5
     - pillow
