@@ -1,6 +1,9 @@
-# EquAct: An SE(3)-Equivariant Multi-Task Transformer for 3D Robotic Manipulation
+# [ICLR2026] EquAct: An SE(3)-Equivariant Multi-Task Transformer for 3D Robotic Manipulation
 
 Xupeng Zhu, Yu Qi, Yizhe Zhu, Robin Walters, Robert Platt.
+
+[OpenReview](https://openreview.net/pdf?id=d1wuA8oIH0) |
+[7min Video](https://www.youtube.com/watch?v=ymrNQusB6Mw)
 
 ![teaser](fig/EquAct.png)
 
