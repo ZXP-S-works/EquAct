@@ -2,7 +2,7 @@
 
 Xupeng Zhu, Yu Qi, Yizhe Zhu, Robin Walters, Robert Platt.
 
-[OpenReview](https://openreview.net/pdf?id=d1wuA8oIH0) |
+[OpenReview](https://openreview.net/forum?id=d1wuA8oIH0) |
 [7min Video](https://www.youtube.com/watch?v=ymrNQusB6Mw)
 
 ![teaser](fig/EquAct.png)
